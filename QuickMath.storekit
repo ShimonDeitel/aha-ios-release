@@ -9,7 +9,7 @@
       }
     ]
   },
-  "identifier": "LATTICE_STOREKIT_CONFIG",
+  "identifier": "AHA_STOREKIT_CONFIG",
   "nonRenewingSubscriptions": [],
   "products": [],
   "settings": {

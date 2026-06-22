@@ -161,9 +161,10 @@ final class AppModel: ObservableObject {
             return try ModelContainer(for: schema, configurations: [config])
         } catch {
             let fallback = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-            return (try? ModelContainer(for: schema, configurations: [fallback])) ?? {
-                fatalError("Cannot create ModelContainer: \(error)")
-            }()
+            if let mc = try? ModelContainer(for: schema, configurations: [fallback]) {
+                return mc
+            }
+            fatalError("Cannot create ModelContainer")
         }
     }
 
