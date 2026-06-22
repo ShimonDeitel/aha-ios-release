@@ -1,242 +1,157 @@
 import SwiftUI
-import Charts
+import SwiftData
 
+/// InsightsView — Pro feature: searchable archive, field filter, streak.
 struct InsightsView: View {
     @EnvironmentObject var appModel: AppModel
     @EnvironmentObject var store: Store
     @Environment(\.dismiss) private var dismiss
 
-    @State private var selectedSegment = 0
-    private let segments = ["History", "Dual Wave", "Insights"]
+    @State private var searchText = ""
+    @State private var selectedField: String? = nil
+    @State private var selectedConcept: Concept? = nil
+
+    private var allFields: [String] {
+        Array(Set(appModel.allConcepts.map { $0.field })).sorted()
+    }
+
+    private var filtered: [Concept] {
+        var base = appModel.allConcepts
+        if let field = selectedField {
+            base = base.filter { $0.field == field }
+        }
+        if !searchText.isEmpty {
+            let lower = searchText.lowercased()
+            base = base.filter {
+                $0.title.lowercased().contains(lower) ||
+                $0.field.lowercased().contains(lower) ||
+                $0.explainer.lowercased().contains(lower)
+            }
+        }
+        return base
+    }
+
+    private var streak: Int {
+        let understood = appModel.allConcepts.filter { $0.understood }
+            .map { Calendar.current.startOfDay(for: $0.dateUnlocked) }
+            .sorted(by: >)
+        var count = 0
+        var check = Calendar.current.startOfDay(for: Date())
+        for date in understood {
+            if date == check {
+                count += 1
+                check = Calendar.current.date(byAdding: .day, value: -1, to: check)!
+            } else {
+                break
+            }
+        }
+        return count
+    }
 
     var body: some View {
         NavigationStack {
             ZStack {
                 QMBackground()
-
-                if !store.isPro {
-                    VStack(spacing: 16) {
-                        Image(systemName: "lock.fill")
-                            .font(.system(size: 48))
-                            .foregroundStyle(Color.qmAccent)
-                        Text("Tideline Pro Required")
-                            .font(.title2.weight(.bold))
-                        Text("Unlock multi-month history, dual-wave comparison and insights.")
-                            .multilineTextAlignment(.center)
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 32)
-                        Button("Dismiss") { dismiss() }
-                            .softButton()
+                VStack(spacing: 0) {
+                    // Stats row
+                    HStack(spacing: 12) {
+                        MetricTile(value: "\(appModel.allConcepts.count)", label: "Total")
+                        MetricTile(value: "\(appModel.allConcepts.filter { $0.understood }.count)", label: "Understood")
+                        MetricTile(value: "\(streak)", label: "Streak")
                     }
-                } else {
-                    ScrollView {
-                        VStack(spacing: 24) {
-                            Picker("View", selection: $selectedSegment) {
-                                ForEach(0..<segments.count, id: \.self) { i in
-                                    Text(segments[i]).tag(i)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 8)
+
+                    // Field filter pills
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            FilterPill(label: "All", isSelected: selectedField == nil) {
+                                selectedField = nil
+                            }
+                            ForEach(allFields, id: \.self) { field in
+                                FilterPill(label: field, isSelected: selectedField == field) {
+                                    selectedField = selectedField == field ? nil : field
                                 }
                             }
-                            .pickerStyle(.segmented)
-                            .padding(.horizontal, 16)
-
-                            switch selectedSegment {
-                            case 0: historySection
-                            case 1: dualWaveSection
-                            default: insightsSection
-                            }
-
-                            Spacer(minLength: 32)
                         }
-                        .padding(.top, 8)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
                     }
+
+                    // Search
+                    HStack {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.secondary)
+                        TextField("Search concepts...", text: $searchText)
+                            .textFieldStyle(.plain)
+                    }
+                    .padding(12)
+                    .background(Color.qmCard, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+
+                    // Concept list
+                    List(filtered, id: \.id) { concept in
+                        Button {
+                            selectedConcept = concept
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(concept.title)
+                                        .font(.body.weight(.medium))
+                                        .foregroundStyle(.primary)
+                                    Text(concept.field)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if concept.understood {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(Color.qmCorrect)
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .listStyle(.plain)
                 }
             }
-            .navigationTitle("Insights")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("Archive")
+            .navigationBarTitleDisplayMode(.large)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
                 }
             }
-        }
-    }
-
-    // MARK: - History
-    private var historySection: some View {
-        VStack(spacing: 16) {
-            // Full history chart
-            if appModel.allEntries.isEmpty {
-                Text("No data yet. Start logging your energy each day.")
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(32)
-            } else {
-                let sorted = appModel.allEntries.sorted { $0.date < $1.date }
-                Chart {
-                    ForEach(Array(sorted.enumerated()), id: \.offset) { idx, entry in
-                        LineMark(
-                            x: .value("Day", idx),
-                            y: .value("Level", entry.level)
-                        )
-                        .foregroundStyle(Color.qmAccent)
-                        .lineStyle(StrokeStyle(lineWidth: 2))
-                        .interpolationMethod(.catmullRom)
-
-                        AreaMark(
-                            x: .value("Day", idx),
-                            yStart: .value("Base", 0),
-                            yEnd: .value("Level", entry.level)
-                        )
-                        .foregroundStyle(Color.qmAccent.opacity(0.15))
-                        .interpolationMethod(.catmullRom)
-                    }
-                }
-                .chartYScale(domain: 0...10)
-                .chartXAxis(.hidden)
-                .frame(height: 180)
-                .padding(.horizontal, 16)
-
-                // Entry list
-                LazyVStack(spacing: 1) {
-                    ForEach(sorted.reversed()) { entry in
-                        HStack {
-                            Text(entry.date, style: .date)
-                                .font(.subheadline)
-                            Spacer()
-                            Text(entry.partOfDay.capitalized)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text("\(entry.level)")
-                                .font(.headline.monospacedDigit())
-                                .foregroundStyle(Color.qmAccent)
-                                .frame(width: 28, alignment: .trailing)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(Color.qmCard)
-                    }
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .padding(.horizontal, 16)
-            }
-        }
-    }
-
-    // MARK: - Dual Wave
-    private var dualWaveSection: some View {
-        VStack(spacing: 16) {
-            Text("Morning vs Evening")
-                .font(.headline)
-
-            let mornings = appModel.allEntries.filter { $0.partOfDay == "morning" }.sorted { $0.date < $1.date }
-            let evenings = appModel.allEntries.filter { $0.partOfDay == "evening" }.sorted { $0.date < $1.date }
-
-            if mornings.isEmpty && evenings.isEmpty {
-                Text("Use the morning/evening toggle when logging to see your dual-wave comparison.")
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(32)
-            } else {
-                Chart {
-                    ForEach(Array(mornings.enumerated()), id: \.offset) { idx, entry in
-                        LineMark(
-                            x: .value("Day", idx),
-                            y: .value("Morning", entry.level),
-                            series: .value("Time", "Morning")
-                        )
-                        .foregroundStyle(Color.qmAccent)
-                        .interpolationMethod(.catmullRom)
-                    }
-                    ForEach(Array(evenings.enumerated()), id: \.offset) { idx, entry in
-                        LineMark(
-                            x: .value("Day", idx),
-                            y: .value("Evening", entry.level),
-                            series: .value("Time", "Evening")
-                        )
-                        .foregroundStyle(Color.qmCorrect)
-                        .interpolationMethod(.catmullRom)
-                    }
-                }
-                .chartYScale(domain: 0...10)
-                .chartXAxis(.hidden)
-                .chartLegend(.visible)
-                .frame(height: 180)
-                .padding(.horizontal, 16)
-
-                HStack(spacing: 16) {
-                    HStack(spacing: 6) {
-                        Circle().fill(Color.qmAccent).frame(width: 10, height: 10)
-                        Text("Morning").font(.caption).foregroundStyle(.secondary)
-                    }
-                    HStack(spacing: 6) {
-                        Circle().fill(Color.qmCorrect).frame(width: 10, height: 10)
-                        Text("Evening").font(.caption).foregroundStyle(.secondary)
-                    }
+            .sheet(item: $selectedConcept) { concept in
+                NavigationStack {
+                    ConceptDetailView(concept: concept)
+                        .environmentObject(appModel)
                 }
             }
         }
-        .padding(.horizontal, 16)
     }
+}
 
-    // MARK: - Insights
-    private var insightsSection: some View {
-        VStack(spacing: 16) {
-            HStack(spacing: 12) {
-                MetricTile(
-                    value: String(format: "%.1f", appModel.sevenDayAverage),
-                    label: "7-day avg"
-                )
-                MetricTile(
-                    value: "\(appModel.currentStreak)",
-                    label: "Day streak"
-                )
-                MetricTile(
-                    value: appModel.bestTimeOfDay,
-                    label: "Best time"
-                )
-            }
+// MARK: - Filter Pill
 
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Energy Insights")
-                    .font(.headline)
+struct FilterPill: View {
+    let label: String
+    let isSelected: Bool
+    let action: () -> Void
 
-                insightRow(
-                    icon: "sun.max",
-                    title: "Best time of day",
-                    value: appModel.bestTimeOfDay
-                )
-                insightRow(
-                    icon: "flame",
-                    title: "Current streak",
-                    value: "\(appModel.currentStreak) days"
-                )
-                insightRow(
-                    icon: "chart.line.uptrend.xyaxis",
-                    title: "Total entries",
-                    value: "\(appModel.allEntries.count)"
-                )
-                insightRow(
-                    icon: "waveform.path.ecg",
-                    title: "Average energy",
-                    value: String(format: "%.1f / 10", appModel.sevenDayAverage)
-                )
-            }
-            .qmCard()
+    var body: some View {
+        Button(action: action) {
+            Text(label)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(isSelected ? .white : Color.qmAccent)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 7)
+                .background(isSelected ? Color.qmAccent : Color.qmCard,
+                            in: Capsule())
         }
-        .padding(.horizontal, 16)
-    }
-
-    private func insightRow(icon: String, title: String, value: String) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .foregroundStyle(Color.qmAccent)
-                .frame(width: 24)
-            Text(title)
-                .font(.subheadline)
-            Spacer()
-            Text(value)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.secondary)
-        }
+        .buttonStyle(.plain)
     }
 }

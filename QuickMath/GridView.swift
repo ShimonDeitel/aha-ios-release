@@ -1,137 +1,132 @@
 import SwiftUI
-import Charts
+import SwiftData
 
-struct GridView: View {
+/// ConceptDetailView — the primary concept reading and interaction screen.
+/// Named GridView.swift per the recipe but exposes ConceptDetailView struct.
+struct ConceptDetailView: View {
+    let concept: Concept
+
     @EnvironmentObject var appModel: AppModel
+    @Environment(\.dismiss) private var dismiss
 
-    @State private var sliderValue: Double = 5
-    @State private var logged = false
-
-    private var chartEntries: [WaveEntry] {
-        Array(appModel.recentEntries.reversed())
-    }
+    @State private var analogyRevealed = false
+    @State private var markedUnderstood = false
 
     var body: some View {
-        VStack(spacing: 20) {
-            // Wave chart
-            if chartEntries.isEmpty {
-                VStack(spacing: 8) {
-                    Image(systemName: "waveform")
-                        .font(.system(size: 44))
-                        .foregroundStyle(Color.qmAccent.opacity(0.4))
-                    Text("Log your first energy level below")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                .frame(height: 140)
-                .frame(maxWidth: .infinity)
-            } else {
-                Chart {
-                    ForEach(Array(chartEntries.enumerated()), id: \.offset) { idx, entry in
-                        AreaMark(
-                            x: .value("Day", idx),
-                            yStart: .value("Base", 0),
-                            yEnd: .value("Level", entry.level)
-                        )
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [Color.qmAccent.opacity(0.25), Color.qmAccent.opacity(0.05)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                        .interpolationMethod(.catmullRom)
+        ZStack {
+            QMBackground()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    // Field + Title
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(concept.field.uppercased())
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color.qmAccent)
+                            .tracking(1.2)
 
-                        LineMark(
-                            x: .value("Day", idx),
-                            y: .value("Level", entry.level)
-                        )
-                        .foregroundStyle(Color.qmAccent)
-                        .lineStyle(StrokeStyle(lineWidth: 2.5))
-                        .interpolationMethod(.catmullRom)
+                        Text(concept.title)
+                            .font(.system(size: 32, weight: .bold, design: .default))
 
-                        PointMark(
-                            x: .value("Day", idx),
-                            y: .value("Level", entry.level)
-                        )
-                        .foregroundStyle(Color.qmAccent)
-                        .symbolSize(36)
+                        Text(formattedDate(concept.dateUnlocked))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
-                }
-                .chartYScale(domain: 0...10)
-                .chartXAxis(.hidden)
-                .chartYAxis {
-                    AxisMarks(values: [0, 5, 10]) { value in
-                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [4]))
-                            .foregroundStyle(Color.qmHair)
-                        AxisValueLabel {
-                            if let v = value.as(Int.self) {
-                                Text("\(v)")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
+
+                    // Atom icon divider
+                    HStack {
+                        Image(systemName: "atom")
+                            .font(.title3)
+                            .foregroundStyle(Color.qmAccent)
+                        Rectangle()
+                            .fill(Color.qmHair)
+                            .frame(height: 1)
+                    }
+
+                    // Explainer
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("THE IDEA")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .tracking(1)
+                        Text(concept.explainer)
+                            .font(.body)
+                            .lineSpacing(6)
+                    }
+
+                    // Analogy reveal
+                    VStack(alignment: .leading, spacing: 12) {
+                        Button {
+                            withAnimation(.easeOut(duration: 0.25)) {
+                                analogyRevealed = true
+                                Haptics.tap()
+                            }
+                        } label: {
+                            HStack {
+                                Image(systemName: analogyRevealed ? "lightbulb.fill" : "lightbulb")
+                                    .foregroundStyle(Color.qmAccent)
+                                Text(analogyRevealed ? "THE ANALOGY" : "Reveal the analogy")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(analogyRevealed ? .secondary : Color.qmAccent)
+                                    .tracking(analogyRevealed ? 1 : 0)
                             }
                         }
+                        .disabled(analogyRevealed)
+
+                        if analogyRevealed {
+                            Text(concept.analogy)
+                                .font(.body)
+                                .italic()
+                                .foregroundStyle(.secondary)
+                                .lineSpacing(6)
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
                     }
-                }
-                .frame(height: 140)
-            }
+                    .padding(16)
+                    .background(Color.qmCard, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
 
-            // Divider
-            Divider()
-
-            // Log energy section
-            VStack(spacing: 12) {
-                HStack {
-                    Text("Energy level")
-                        .font(.headline)
-                    Spacer()
-                    Text("\(Int(sliderValue.rounded()))")
-                        .font(.title2.weight(.bold))
-                        .foregroundStyle(Color.qmAccent)
-                        .monospacedDigit()
-                        .frame(width: 32)
-                }
-
-                Slider(value: $sliderValue, in: 0...10, step: 1)
-                    .tint(Color.qmAccent)
-                    .onChange(of: sliderValue) { _, _ in
-                        Haptics.tap()
-                        logged = false
+                    // Mark Understood button
+                    let isUnderstood = concept.understood || markedUnderstood
+                    if isUnderstood {
+                        HStack {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(Color.qmCorrect)
+                            Text("Marked as understood")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(Color.qmCorrect)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color.qmCorrect.opacity(0.1), in: RoundedRectangle(cornerRadius: 50, style: .continuous))
+                    } else {
+                        Button {
+                            Haptics.success()
+                            appModel.markUnderstood(concept)
+                            markedUnderstood = true
+                        } label: {
+                            Text("I understand this")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .prominentButton()
                     }
 
-                HStack {
-                    Text("Low")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Text("High")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 40)
                 }
-
-                Button {
-                    appModel.logEnergy(level: Int(sliderValue.rounded()))
-                    Haptics.success()
-                    logged = true
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: logged ? "checkmark" : "waveform.path")
-                        Text(logged ? "Logged" : "Log Today's Energy")
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .prominentButton()
-                .disabled(logged)
-                .animation(.easeInOut(duration: 0.2), value: logged)
+                .padding(.horizontal, 20)
+                .padding(.top, 24)
             }
         }
-        .qmCard()
-        .onAppear {
-            if let today = appModel.todayEntry {
-                sliderValue = Double(today.level)
-                logged = true
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Done") { dismiss() }
             }
         }
+        .navigationTitle("")
+        .onAppear { analogyRevealed = false }
+    }
+
+    private func formattedDate(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.dateStyle = .long
+        return f.string(from: date)
     }
 }

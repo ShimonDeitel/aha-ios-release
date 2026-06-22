@@ -4,114 +4,109 @@ struct PaywallView: View {
     @EnvironmentObject var store: Store
     @Environment(\.dismiss) private var dismiss
 
-    private let benefits = [
-        ("clock.arrow.circlepath", "Unlimited multi-month wave history and zoom"),
-        ("waveform.path.ecg", "Morning vs evening dual-wave comparison"),
-        ("lightbulb", "Best-time-of-day insights and gentle daily nudge")
+    private let benefits: [(icon: String, text: String)] = [
+        ("archivebox", "Searchable archive of every explained concept"),
+        ("slider.horizontal.3", "Pick which fields appear more often"),
+        ("bell.badge", "Daily concept reminder with a learning streak")
     ]
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                QMBackground()
+        ZStack {
+            QMBackground()
+            VStack(spacing: 0) {
+                Spacer()
 
-                ScrollView {
-                    VStack(spacing: 28) {
-                        // Icon + title
-                        VStack(spacing: 12) {
-                            Image(systemName: "waveform.path.ecg")
-                                .font(.system(size: 56, weight: .thin))
+                // Icon
+                ZStack {
+                    Circle()
+                        .fill(Color.qmCard)
+                        .frame(width: 88, height: 88)
+                    Image(systemName: "atom")
+                        .font(.system(size: 40))
+                        .foregroundStyle(Color.qmAccent)
+                }
+                .padding(.bottom, 20)
+
+                Text("Aha Pro")
+                    .font(.largeTitle.weight(.bold))
+
+                Text("\(store.displayPrice) / month. Auto-renews until you cancel.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+                    .padding(.top, 4)
+
+                // Benefits
+                VStack(spacing: 16) {
+                    ForEach(benefits, id: \.text) { benefit in
+                        HStack(spacing: 14) {
+                            Image(systemName: benefit.icon)
+                                .font(.body)
                                 .foregroundStyle(Color.qmAccent)
-
-                            Text("Tideline Pro")
-                                .font(.largeTitle.weight(.bold))
-
-                            Text("$0.99 / month. Auto-renews until you cancel.")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.center)
+                                .frame(width: 24)
+                            Text(benefit.text)
+                                .font(.body)
+                                .foregroundStyle(.primary)
+                            Spacer()
                         }
-                        .padding(.top, 16)
+                    }
+                }
+                .padding(20)
+                .background(Color.qmCard, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .padding(.horizontal, 24)
+                .padding(.top, 28)
 
-                        // Benefits
-                        VStack(spacing: 0) {
-                            ForEach(Array(benefits.enumerated()), id: \.offset) { idx, benefit in
-                                HStack(spacing: 14) {
-                                    Image(systemName: benefit.0)
-                                        .foregroundStyle(Color.qmAccent)
-                                        .frame(width: 28)
-                                    Text(benefit.1)
-                                        .font(.subheadline)
-                                    Spacer()
-                                }
-                                .padding(.vertical, 14)
-                                .padding(.horizontal, 16)
+                Spacer()
 
-                                if idx < benefits.count - 1 {
-                                    Divider().padding(.leading, 58)
-                                }
-                            }
-                        }
-                        .background(Color.qmCard, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                        .padding(.horizontal, 16)
-
-                        // Unlock button
-                        Button {
-                            Task {
-                                await store.purchase()
-                            }
-                        } label: {
-                            HStack(spacing: 8) {
-                                if store.purchaseInFlight {
-                                    ProgressView()
-                                        .tint(.white)
-                                }
-                                Text("Unlock for \(store.displayPrice)/month")
+                // Actions
+                VStack(spacing: 12) {
+                    Button {
+                        Task { await store.purchase() }
+                    } label: {
+                        Group {
+                            if store.purchaseInFlight {
+                                ProgressView()
+                                    .tint(.white)
+                            } else {
+                                Text("Unlock Aha Pro")
                                     .frame(maxWidth: .infinity)
                             }
                         }
-                        .prominentButton()
-                        .disabled(store.purchaseInFlight)
-                        .padding(.horizontal, 16)
+                    }
+                    .prominentButton()
+                    .disabled(store.purchaseInFlight)
+                    .padding(.horizontal, 24)
 
-                        // Restore
-                        Button("Restore Purchase") {
-                            Task { await store.restore() }
-                        }
-                        .font(.subheadline)
-                        .foregroundStyle(Color.qmAccent)
-
-                        // Legal
-                        VStack(spacing: 8) {
-                            Text("Subscription automatically renews each month at \(store.displayPrice) unless cancelled at least 24 hours before the renewal date. Manage or cancel anytime in your Apple Account subscriptions.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.center)
-
-                            HStack(spacing: 16) {
-                                Link("Terms of Use", destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!)
-                                    .font(.caption)
-                                    .foregroundStyle(Color.qmAccent)
-                                Link("Privacy Policy", destination: URL(string: "https://shimondeitel.github.io/tideline-site/privacy.html")!)
-                                    .font(.caption)
-                                    .foregroundStyle(Color.qmAccent)
-                            }
-                        }
-                        .padding(.horizontal, 24)
-
-                        Spacer(minLength: 16)
+                    Button {
+                        Task { await store.restore() }
+                    } label: {
+                        Text("Restore Purchase")
+                            .font(.subheadline)
+                            .foregroundStyle(Color.qmAccent)
                     }
                 }
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Close") { dismiss() }
+
+                // Disclosure
+                Text("Subscription auto-renews monthly at \(store.displayPrice) until cancelled in App Store settings. Cancel anytime.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 28)
+                    .padding(.top, 12)
+
+                HStack(spacing: 16) {
+                    Link("Terms", destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!)
+                    Link("Privacy", destination: URL(string: "https://shimondeitel.github.io/aha-site/privacy.html")!)
                 }
+                .font(.caption)
+                .foregroundStyle(Color.qmAccent)
+                .padding(.top, 8)
+                .padding(.bottom, 32)
             }
-            .onChange(of: store.isPro) { _, newValue in
-                if newValue { dismiss() }
-            }
+        }
+        .onChange(of: store.isPro) { _, newVal in
+            if newVal { dismiss() }
         }
     }
 }

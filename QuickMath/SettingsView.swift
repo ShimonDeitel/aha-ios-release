@@ -6,54 +6,62 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
     @AppStorage("quickmath.theme") private var themeRaw = AppTheme.system.rawValue
-
     @State private var showPaywall = false
     @State private var showDeleteConfirm = false
 
-    private var theme: Binding<AppTheme> {
-        Binding(
-            get: { AppTheme(rawValue: themeRaw) ?? .system },
-            set: { themeRaw = $0.rawValue }
-        )
+    private var theme: AppTheme {
+        get { AppTheme(rawValue: themeRaw) ?? .system }
+        nonmutating set { themeRaw = newValue.rawValue }
     }
 
     var body: some View {
         NavigationStack {
             ZStack {
                 QMBackground()
-
                 List {
                     // Pro section
                     Section("Subscription") {
                         if store.isPro {
                             HStack {
-                                Text("Tideline Pro")
-                                Spacer()
-                                Text("Active")
-                                    .foregroundStyle(Color.qmCorrect)
-                                    .font(.subheadline.weight(.medium))
+                                Image(systemName: "checkmark.seal.fill")
+                                    .foregroundStyle(Color.qmAccent)
+                                Text("Aha Pro — Active")
+                                    .font(.body.weight(.medium))
                             }
-                            Link("Manage Subscription",
-                                 destination: URL(string: "https://apps.apple.com/account/subscriptions")!)
-                                .foregroundStyle(Color.qmAccent)
-                        } else {
-                            Button("Unlock Tideline Pro") {
-                                showPaywall = true
+                            Link(destination: URL(string: "https://apps.apple.com/account/subscriptions")!) {
+                                HStack {
+                                    Text("Manage Subscription")
+                                    Spacer()
+                                    Image(systemName: "arrow.up.right")
+                                        .font(.caption)
+                                }
                             }
                             .foregroundStyle(Color.qmAccent)
+                        } else {
+                            Button {
+                                showPaywall = true
+                            } label: {
+                                HStack {
+                                    Image(systemName: "atom")
+                                        .foregroundStyle(Color.qmAccent)
+                                    Text("Unlock Aha Pro")
+                                        .foregroundStyle(Color.qmAccent)
+                                }
+                            }
+                            Button {
+                                Task { await store.restore() }
+                            } label: {
+                                Text("Restore Purchase")
+                                    .foregroundStyle(Color.qmAccent)
+                            }
                         }
-
-                        Button("Restore Purchase") {
-                            Task { await store.restore() }
-                        }
-                        .foregroundStyle(Color.qmAccent)
                     }
 
                     // Appearance
                     Section("Appearance") {
-                        Picker("Theme", selection: theme) {
+                        Picker("Theme", selection: $themeRaw) {
                             ForEach(AppTheme.allCases) { t in
-                                Text(t.label).tag(t)
+                                Text(t.label).tag(t.rawValue)
                             }
                         }
                         .pickerStyle(.segmented)
@@ -61,28 +69,41 @@ struct SettingsView: View {
 
                     // Legal
                     Section("Legal") {
-                        Link("Privacy Policy",
-                             destination: URL(string: "https://shimondeitel.github.io/tideline-site/privacy.html")!)
-                            .foregroundStyle(Color.qmAccent)
-                        Link("Terms of Use",
-                             destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!)
-                            .foregroundStyle(Color.qmAccent)
+                        Link(destination: URL(string: "https://shimondeitel.github.io/aha-site/privacy.html")!) {
+                            HStack {
+                                Text("Privacy Policy")
+                                Spacer()
+                                Image(systemName: "arrow.up.right")
+                                    .font(.caption)
+                            }
+                        }
+                        .foregroundStyle(.primary)
+                        Link(destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!) {
+                            HStack {
+                                Text("Terms of Use")
+                                Spacer()
+                                Image(systemName: "arrow.up.right")
+                                    .font(.caption)
+                            }
+                        }
+                        .foregroundStyle(.primary)
                     }
 
-                    // Data
+                    // Danger zone
                     Section("Data") {
-                        Button("Delete All Data") {
+                        Button(role: .destructive) {
                             showDeleteConfirm = true
+                        } label: {
+                            Text("Delete All Data")
                         }
-                        .foregroundStyle(Color.qmWrong)
                     }
                 }
-                .scrollContentBackground(.hidden)
+                .listStyle(.insetGrouped)
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
                 }
             }
@@ -90,17 +111,13 @@ struct SettingsView: View {
                 PaywallView()
                     .environmentObject(store)
             }
-            .confirmationDialog(
-                "Delete all Tideline data?",
-                isPresented: $showDeleteConfirm,
-                titleVisibility: .visible
-            ) {
+            .confirmationDialog("Delete all concept data?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
                 Button("Delete All", role: .destructive) {
                     appModel.deleteAllData()
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("This removes all your logged energy entries and cannot be undone.")
+                Text("This cannot be undone.")
             }
         }
     }
